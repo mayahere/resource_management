@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Employee, User } from '../types';
 import { calculateAvailableEffort, calculateExperienceLevel } from '../utils';
 import { Badge } from '../components/Badge';
-import { Search, Filter, Check, X } from 'lucide-react';
+import { Search, Filter, Check, X, Plus } from 'lucide-react';
+import { AddResourceModal } from '../components/AddResourceModal';
 
 interface DashboardProps {
   employees: Employee[];
@@ -10,6 +11,8 @@ interface DashboardProps {
   pendingRequests?: any[];
   onApproveRequest?: (id: string) => void;
   onRejectRequest?: (id: string) => void;
+  token?: string;
+  onRefreshData?: () => void;
 }
 
 export function Dashboard({
@@ -17,11 +20,14 @@ export function Dashboard({
   currentUser,
   pendingRequests = [],
   onApproveRequest,
-  onRejectRequest
+  onRejectRequest,
+  token,
+  onRefreshData
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSpec, setFilterSpec] = useState<string>('All');
   const [filterLevel, setFilterLevel] = useState<string>('All');
+  const [showAddResourceModal, setShowAddResourceModal] = useState(false);
 
   const specializations = [
     'All',
@@ -177,6 +183,15 @@ export function Dashboard({
                 </option>
               ))}
             </select>
+            {currentUser.role === 'Admin' && (
+              <button
+                onClick={() => setShowAddResourceModal(true)}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+              >
+                <Plus size={16} />
+                Add Resource
+              </button>
+            )}
           </div>
         </div>
 
@@ -248,6 +263,17 @@ export function Dashboard({
           </table>
         </div>
       </div>
+
+      {currentUser.role === 'Admin' && token && onRefreshData && (
+        <AddResourceModal
+          isOpen={showAddResourceModal}
+          onClose={() => setShowAddResourceModal(false)}
+          token={token}
+          onSuccess={() => {
+            onRefreshData();
+          }}
+        />
+      )}
     </div>
   );
 }

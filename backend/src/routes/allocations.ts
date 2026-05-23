@@ -280,4 +280,128 @@ router.put('/:id/reject', requireRole(['Admin']), async (req: AuthRequest, res: 
   }
 });
 
+// PUT /:id - Edit Resource Allocation (Admin or PM only)
+router.put('/:id', requireRole(['Admin', 'Project Manager']), async (req: AuthRequest, res: Response) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+  const { allocatedEffort, startDate, endDate } = req.body;
+
+  if (!allocatedEffort || !startDate || !endDate) {
+    return res.status(400).json({ error: 'allocatedEffort, startDate, and endDate are required' });
+  }
+
+  const effort = parseInt(allocatedEffort, 10);
+  if (isNaN(effort) || effort <= 0 || effort > 100) {
+    return res.status(400).json({ error: 'Effort must be between 1 and 100%' });
+  }
+
+  const reqStart = new Date(startDate);
+  const reqEnd = new Date(endDate);
+
+  if (reqStart > reqEnd) {
+    return res.status(400).json({ error: 'Start date must be before or equal to end date' });
+  }
+
+  // Auto-release before checks
+  await releaseExpiredAllocations();
+
+  try {
+    const allocation = await prisma.resourceAllocation.findUnique({
+      where: { id },
+      include: {
+        project: true,
+        employee: {
+          include: { allocations: true },
+        },
+      },
+    });
+
+    if (!allocation) {
+      return res.status(404).json({ error: 'Allocation not found' });
+    }
+
+    // Permission check: Admin or PM of the project
+    if (req.user.role === 'Project Manager' && allocation.project.pmId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only edit allocations for projects you manage' });
+    }
+
+    // Rule 2: Date within Project Period
+    if (reqStart < allocation.project.startDate || reqEnd > allocation.project.endDate) {
+      return res.status(400).json({
+        error: `Allocation period must be within project duration (${allocation.project.startDate.toISOString().split('T')[0]} to ${allocation.project.endDate.toISOString().split('T')[0]})`
+      });
+    }
+
+    // Rule 3: No Overlapping Over-allocation
+    // Find all approved allocations that overlap, excluding the current one
+    const overlapping = allocation.employee.allocations.filter((a) => {
+      if (a.id === id) return false; // exclude current
+      if (a.status !== 'Approved') return false;
+      const aStart = new Date(a.startDate);
+      const aEnd = new Date(a.endDate);
+      return reqStart <= aEnd && reqEnd >= aStart;
+    });
+
+    const totalOverlappingEffort = overlapping.reduce((sum, a) => sum + a.allocatedEffort, 0);
+
+    if (totalOverlappingEffort + effort > 100) {
+      return res.status(400).json({
+        error: `Over-allocation detected. Employee only has ${100 - totalOverlappingEffort}% available effort during this overlapping period.`
+      });
+    }
+
+    // Admin updates are Approved; PM updates become Pending
+    const updatedStatus = req.user.role === 'Admin' ? 'Approved' : 'Pending';
+
+    const updated = await prisma.resourceAllocation.update({
+      where: { id },
+      data: {
+        allocatedEffort: effort,
+        startDate: reqStart,
+        endDate: reqEnd,
+        status: updatedStatus,
+      },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Update allocation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /:id - Delete/Remove Resource Allocation (Admin or PM only)
+router.delete('/:id', requireRole(['Admin', 'Project Manager']), async (req: AuthRequest, res: Response) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+
+  try {
+    const allocation = await prisma.resourceAllocation.findUnique({
+      where: { id },
+      include: { project: true },
+    });
+
+    if (!allocation) {
+      return res.status(404).json({ error: 'Allocation not found' });
+    }
+
+    // Permission check: Admin or PM of the project
+    if (req.user.role === 'Project Manager' && allocation.project.pmId !== req.user.id) {
+      return res.status(403).json({ error: 'You can only remove allocations for projects you manage' });
+    }
+
+    await prisma.resourceAllocation.delete({
+      where: { id },
+    });
+
+    res.json({ message: 'Allocation removed successfully' });
+  } catch (error) {
+    console.error('Delete allocation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
+

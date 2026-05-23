@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Project, Employee, User, Specialization } from '../types';
 import { getProjectStatus, formatDate } from '../utils';
 import { Badge } from '../components/Badge';
-import { Plus, Users, X, AlertCircle } from 'lucide-react';
+import { Plus, Users, X, AlertCircle, Edit2, Trash2 } from 'lucide-react';
 import { ResourceRequestModal } from '../components/ResourceRequestModal';
+import { EditResourceAllocationModal } from '../components/EditResourceAllocationModal';
 
 interface ProjectsProps {
   currentUser: User;
@@ -32,6 +33,55 @@ export function Projects({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [pmUsers, setPmUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const [selectedAllocationToEdit, setSelectedAllocationToEdit] = useState<any | null>(null);
+  const [projectForEdit, setProjectForEdit] = useState<Project | null>(null);
+
+  const handleDeleteAllocation = async (allocationId: string) => {
+    if (!confirm('Are you sure you want to remove this resource from the project?')) return;
+    try {
+      const response = await fetch(`/api/resource-requests/${allocationId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to remove resource');
+      alert('Resource removed successfully!');
+      onRefreshProjects();
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleEditAllocationSubmit = async (
+    allocationId: string,
+    effort: number,
+    startDate: string,
+    endDate: string
+  ) => {
+    try {
+      const response = await fetch(`/api/resource-requests/${allocationId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          allocatedEffort: effort,
+          startDate,
+          endDate
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to update allocation');
+      alert(`Allocation updated successfully! Status is currently: ${data.status}`);
+      setSelectedAllocationToEdit(null);
+      setProjectForEdit(null);
+      onRefreshProjects();
+    } catch (err: any) {
+      alert(`Error updating allocation: ${err.message}`);
+    }
+  };
 
   // New Project Form State
   const [name, setName] = useState('');
@@ -292,6 +342,27 @@ export function Projects({
                           <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-xs">
                             {alloc.allocatedEffort}%
                           </span>
+                          {canRequest && (
+                            <div className="flex gap-1 ml-1">
+                              <button
+                                onClick={() => {
+                                  setSelectedAllocationToEdit(alloc);
+                                  setProjectForEdit(project);
+                                }}
+                                className="p-1 text-slate-500 hover:text-indigo-600 transition-colors"
+                                title="Edit Allocation"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAllocation(alloc.id)}
+                                className="p-1 text-slate-500 hover:text-red-600 transition-colors"
+                                title="Remove Resource"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -485,6 +556,19 @@ export function Projects({
             </form>
           </div>
         </div>
+      )}
+
+      {selectedAllocationToEdit && projectForEdit && (
+        <EditResourceAllocationModal
+          isOpen={!!selectedAllocationToEdit}
+          onClose={() => {
+            setSelectedAllocationToEdit(null);
+            setProjectForEdit(null);
+          }}
+          project={projectForEdit}
+          allocation={selectedAllocationToEdit}
+          onSubmit={handleEditAllocationSubmit}
+        />
       )}
     </div>
   );

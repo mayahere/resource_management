@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hrrams-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: hrrams
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: hrrams-backend
+    restart: always
+    command: sh -c "npx prisma db push && npm run prisma:seed && node dist/index.js"
+    ports:
+      - '5001:5001'
+    environment:
+      PORT: 5001
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/hrrams?schema=public
+      JWT_SECRET: super-secret-jwt-key-change-it-in-production
+    depends_on:
+      - postgres
+
+  frontend:
+    build: ./frontend
+    container_name: hrrams-frontend
+    restart: always
+    ports:
+      - '5173:5173'
+    environment:
+      VITE_BACKEND_URL: http://backend:5001
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

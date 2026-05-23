@@ -1,0 +1,79 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String    @id @default(uuid())
+  fullName        String    @map("full_name")
+  email           String    @unique
+  password        String
+  role            String    // Admin, Project Manager, Developer, Tester, Business Analyst
+  status          String    // Active, Inactive
+  createdAt       DateTime  @default(now()) @map("created_at")
+  
+  employee        Employee?
+  managedProjects Project[] @relation("ManagedProjects")
+
+  @@map("users")
+}
+
+model Employee {
+  id                String               @id @default(uuid())
+  userId            String               @unique @map("user_id")
+  contractStartDate DateTime             @map("contract_start_date")
+  specialization    String               // Front-end Developer, Back-end Developer, Automation Tester, Manual Tester, Business Analyst
+  availableEffort   Int                  @default(100) @map("available_effort")
+  
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  allocations       ResourceAllocation[]
+
+  @@map("employees")
+}
+
+model Project {
+  id              String               @id @default(uuid())
+  name            String
+  description     String
+  startDate       DateTime             @map("start_date")
+  endDate         DateTime             @map("end_date")
+  originalEndDate DateTime             @map("original_end_date")
+  pmId            String               @map("pm_id")
+  status          String               // Planned, Active, Completed, Extended
+  
+  pm              User                 @relation("ManagedProjects", fields: [pmId], references: [id], onDelete: Restrict)
+  requirements    ProjectRequirement[]
+  allocations     ResourceAllocation[]
+
+  @@map("projects")
+}
+
+model ProjectRequirement {
+  id             String   @id @default(uuid())
+  projectId      String   @map("project_id")
+  specialization String
+  requiredEffort Int      @map("required_effort")
+  
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_requirements")
+}
+
+model ResourceAllocation {
+  id              String   @id @default(uuid())
+  projectId       String   @map("project_id")
+  employeeId      String   @map("employee_id")
+  allocatedEffort Int      @map("allocated_effort")
+  startDate       DateTime @map("start_date")
+  endDate         DateTime @map("end_date")
+  status          String   // Pending, Approved, Rejected, Released
+  
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("resource_allocations")
+}

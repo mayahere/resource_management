@@ -63,7 +63,7 @@ export function Dashboard({
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Resource Dashboard</h1>
         <p className="text-slate-500 mt-1">
-          Overview of employee availability and allocations.
+          Overview of employee availability and allocation 23
         </p>
       </div>
 
